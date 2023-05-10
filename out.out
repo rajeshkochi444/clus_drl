@@ -1,0 +1,70 @@
+--- Test3/clusgym_env.py	2022-06-27 02:43:27.040039056 +0000
++++ UniqueMin/clusgym_env_unique_minima.py	2022-06-28 08:43:37.281196873 +0000
+@@ -95,6 +95,10 @@
+         self.positions = self.atoms.get_positions()
+         
+         self.found_new_min = 0
++        
++        #unique minima 
++        self.unique_minima = [self.initial_atoms.copy()]
++        self.unique_minima_energies = [0.0]
+ 
+         # Define the possible actions
+ 
+@@ -143,7 +147,7 @@
+             reward -= 1000.0
+         else:			#minimization
+             dyn = BFGS(atoms=self.atoms, logfile=None, trajectory= save_path_min)
+-            converged = dyn.run(fmax=0.02)
++            dyn.run(fmax=0.02)
+             self.relative_energy = self._get_relative_energy()
+ 
+             self.all_minima['minima'].append(self.atoms.copy())
+@@ -153,7 +157,8 @@
+ 		
+ 		#checking the similarilty of the relaxed cluster minimum  between cluster minima already found
+             bool_list = []
+-            for clus in self.minima['minima']:
++            #for clus in self.minima['minima']:
++            for clus in self.unique_minima:
+                 bool_list.append(checkSimilar(self.atoms, clus)) 
+ 		
+             if any(bool_list): #if the minimum is already found, reward is zero
+@@ -163,10 +168,12 @@
+                 self.done = True
+                 self.found_new_min =  1
+ 		
+-                self.minima['minima'].append(self.atoms.copy())
+-                self.minima['energies'].append(self._get_relative_energy())
+-                self.minima['timesteps'].append(self.history['timesteps'][-1] + 1)
+-                self.minima['positions'].append(self.atoms.positions.copy())
++                self.unique_minima.append(self.atoms.copy())
++                self.unique_minima_energies.append(self._get_relative_energy())
++                #self.minima['minima'].append(self.atoms.copy())
++                #self.minima['energies'].append(self._get_relative_energy())
++                #self.minima['timesteps'].append(self.history['timesteps'][-1] + 1)
++                #self.minima['positions'].append(self.atoms.positions.copy())
+ 	
+ 	
+         #Fingerprints after step action
+@@ -258,15 +265,17 @@
+     def save_traj(self):      
+         save_path = os.path.join(self.traj_dir, '%d_%f_%f_%f_full.traj' %(self.episodes, self.minima['energies'][self.min_idx]
+                                                                       , self.initial_energy, self.episode_reward))
+-        episode_min_path = os.path.join(self.episode_min_traj_dir, '%d_%f_%f_%f_full.traj' %(self.episodes, self.minima['energies'][self.min_idx]
+-                                                                      , self.initial_energy, self.episode_reward))
++        episode_min_path = os.path.join(self.episode_min_traj_dir, '%d_%d_%f_%f_%f_full.traj' %(self.episodes, len(self.unique_minima)
++                                                                      , self.initial_energy, min(self.unique_minima_energies), self.episode_reward))
++        
+         trajectories = []
+         for atoms in self.trajectories:
+             atoms.set_calculator(EMT())
+             trajectories.append(atoms)
+         write(save_path, trajectories)
+ 
+-        write(episode_min_path, self.minima['minima'])
++        #write(episode_min_path, self.minima['minima'])
++        write(episode_min_path, self.unique_minima)
+         
+         return
+ 
