@@ -14,6 +14,8 @@ from asap3 import EMT
 import copy
 from symmetry_function import make_snn_params, wrap_symmetry_functions
 from clus_utils import checkSimilar, addAtoms, fixOverlap
+import itertools
+from dscribe.descriptors import ACSF, SOAP
 
 
 
@@ -171,8 +173,7 @@ class MCSEnv(gym.Env):
 	
         #Fingerprints after step action
         self.fps, self.fp_length = self._get_fingerprints(self.atoms)
-        print("self.fps, self.fps_length")
-        print(self.fps, self.fp_length)
+       
         
         #Get the new observation
         observation = self._get_observation()
@@ -236,9 +237,79 @@ class MCSEnv(gym.Env):
                 G["G4_zetas"],
                 G["G4_gammas"],
             )
-        self.snn_params = make_snn_params(self.elements, *descriptors)                
+        print("descriptors", descriptors)
+        self.snn_params = make_snn_params(self.elements, *descriptors)  
+        print("self.snn_params", self.snn_params)              
         return self.initial_atoms, self.snn_params
+    
+    def generate_acsf_descriptor(self):
+        #epsilon = [1,2,3,4,5,6,7]
+        #kappa = [0.5,1.0,1.5,2.0,2.5]
+        #eta = [0.01,0.03,0.06,0.1,0.2,0.4,1.0,2.5,5.0]
+        #R_s =  [0.5, 1.0, 1.5, 2.0, 3.0, 4.0]
+        #lamb = [-1, 1]
         
+        #g2_params = [list(item) for item in itertools.product(eta, R_s)]
+        #g3_params = kappa
+        #g4_params = [list(item) for item in itertools.product(eta, epsilon, lamb)]
+        #g5_params = g4_params
+        self.initial_atoms, self.elements = self._generate_clus()
+        epsilon = [1.0]
+        g2_eta = np.logspace(np.log10(0.05), np.log10(5.0), num=4)
+        g4_eta = [0.005]
+        R_s = [0] * 4
+        lamb = [-1, 1]
+        r_cut = 6.5
+
+        g2_eta =[a / r_cut**2 for a in g2_eta]
+        g4_eta = [a / r_cut**2 for a in g4_eta]
+
+        g2_params = [list(item) for item in itertools.product(g2_eta, R_s)]
+        g4_params = [list(item) for item in itertools.product(g4_eta, epsilon, lamb)]
+
+
+        # Set up: Instantiating an ACSF descripto
+        species = set()
+        species.update(self.initial_atoms.get_chemical_symbols())
+        print('species:', species)
+        acsf = ACSF(
+            species=species,
+            r_cut=r_cut,
+            g2_params=g2_params,
+            #g3_params=g3_params,
+            g4_params=g4_params,
+            #g5_params=g5_params
+        )
+
+        # Create ACSF output for the system
+        acsf_fp = acsf.create(self.initial_atoms, n_jobs=-1)
+
+        return acsf_fp
+    
+    def generate_soap_descriptor(self):
+        self.initial_atoms, self.elements = self._generate_clus()
+        
+        r_cut = 6.5
+        n_max = 9
+        l_max = 10
+
+        species = self.elements
+        print(species)
+        # Setting up the SOAP descriptor
+        soap = SOAP(
+            species=species,
+            periodic=False,
+            r_cut=r_cut,
+            n_max=n_max,
+            l_max=l_max,    )
+
+   
+        # Create ACSF output for the system
+    
+        soap_fp  = soap.create(self.initial_atoms, n_jobs=-1)
+   
+
+        return soap_fp
     
     def save_episode(self):
         save_path = os.path.join(self.history_dir, '%d_%f_%f_%f.npz' %(self.episodes, self.minima['energies'][self.min_idx],
@@ -387,7 +458,18 @@ class MCSEnv(gym.Env):
         #get fingerprints from amptorch as better state space feature
         fps = wrap_symmetry_functions(self.atoms, self.snn_params)
         fp_length = fps.shape[-1]
+
+        print("self.fps, self.fps_length")
+        print(fps, fp_length, type(fps))
         
+        fp_acsf  = self.generate_acsf_descriptor()
+        print("self.acsf, self.acsf_length")
+        print(fp_acsf, fp_acsf.shape[-1], type(fp_acsf))
+
+        fp_soap  = self.generate_soap_descriptor()
+        print("self.soap, self.soap")
+        print(fp_soap, fp_soap.shape[-1], type(fp_soap))
+
         return fps, fp_length
     
     def _get_observation_space(self):  

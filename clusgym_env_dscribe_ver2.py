@@ -12,10 +12,9 @@ from ase.visualize.plot import plot_atoms
 from ase.io import write
 from asap3 import EMT
 import copy
-from symmetry_function import make_snn_params, wrap_symmetry_functions
 from clus_utils import checkSimilar, addAtoms, fixOverlap
-
-
+import itertools
+from generate_descriptors_amptorch import Generate_acsf_descriptor, Generate_soap_descriptor
 
 DIRECTION =[np.array([1,0,0]),
            np.array([-1,0,0]),
@@ -62,6 +61,11 @@ class MCSEnv(gym.Env):
         self.plot_dir = os.path.join(save_dir, 'plots')
         self.traj_dir = os.path.join(save_dir, 'trajs')
         self.episode_min_traj_dir = os.path.join(save_dir, 'episode_min')
+
+        for folder in [self.history_dir, self.plot_dir, self.traj_dir, self.episode_min_traj_dir]:
+            if not os.path.exists(folder):
+                os.makedirs(folder)
+        '''
         if not os.path.exists(self.history_dir):
             os.makedirs(self.history_dir)
         if not os.path.exists(self.plot_dir):
@@ -70,9 +74,9 @@ class MCSEnv(gym.Env):
             os.makedirs(self.traj_dir)
         if not os.path.exists(self.episode_min_traj_dir):
             os.makedirs(self.episode_min_traj_dir)
+        '''
         
-        
-        self.initial_atoms, self.snn_params = self._get_initial_clus()
+        self.initial_atoms, self.elements = self._get_initial_clus()
         self.initial_atoms.set_calculator(EMT())
         self.initial_positions = self.initial_atoms.get_positions()
 
@@ -171,8 +175,7 @@ class MCSEnv(gym.Env):
 	
         #Fingerprints after step action
         self.fps, self.fp_length = self._get_fingerprints(self.atoms)
-        print("self.fps, self.fps_length")
-        print(self.fps, self.fp_length)
+       
         
         #Get the new observation
         observation = self._get_observation()
@@ -211,34 +214,8 @@ class MCSEnv(gym.Env):
         return observation, reward, episode_over, {}
 
     def _get_initial_clus(self):
-        self.initial_atoms, self.elements = self._generate_clus()
-
-        if self.descriptors is None:
-            Gs = {}
-            Gs["G2_etas"] = np.logspace(np.log10(0.05), np.log10(5.0), num=4)
-            Gs["G2_rs_s"] = [0] * 4
-            Gs["G4_etas"] = [0.005]
-            Gs["G4_zetas"] = [1.0]
-            Gs["G4_gammas"] = [+1.0, -1]
-            Gs["cutoff"] = 6.5
-
-            G = copy.deepcopy(Gs)
-
-            # order descriptors for simple_nn
-            cutoff = G["cutoff"]
-            G["G2_etas"] = [a / cutoff**2 for a in G["G2_etas"]]
-            G["G4_etas"] = [a / cutoff**2 for a in G["G4_etas"]]
-            descriptors = (
-                G["G2_etas"],
-                G["G2_rs_s"],
-                G["G4_etas"],
-                G["cutoff"],
-                G["G4_zetas"],
-                G["G4_gammas"],
-            )
-        self.snn_params = make_snn_params(self.elements, *descriptors)                
-        return self.initial_atoms, self.snn_params
-        
+        self.initial_atoms, self.elements = self._generate_clus()   
+        return self.initial_atoms, self.elements
     
     def save_episode(self):
         save_path = os.path.join(self.history_dir, '%d_%f_%f_%f.npz' %(self.episodes, self.minima['energies'][self.min_idx],
@@ -275,7 +252,7 @@ class MCSEnv(gym.Env):
     def reset(self):
         #Copy the initial atom and reset the calculator
             
-        self.new_initial_atoms, self.snn_params = self._get_initial_clus()
+        self.new_initial_atoms, self.elements = self._get_initial_clus()
         self.atoms = self.new_initial_atoms.copy()
         self.atoms.set_calculator(EMT())
         self.episode_reward = 0
@@ -384,10 +361,17 @@ class MCSEnv(gym.Env):
         return observation
     
     def _get_fingerprints(self, atoms):
-        #get fingerprints from amptorch as better state space feature
-        fps = wrap_symmetry_functions(self.atoms, self.snn_params)
-        fp_length = fps.shape[-1]
         
+        fps  = Generate_acsf_descriptor(self.atoms)
+        fp_length = fps.shape[-1]
+        #print("self.acsf, self.acsf_length")
+        #print(fps, fp_length)
+
+        fp_soap  = Generate_soap_descriptor(self.atoms)
+        fp_soap_length = fp_soap.shape[-1]
+        #print("self.soap, self.soap")
+        #print(fp_soap, fp_soap_length)
+
         return fps, fp_length
     
     def _get_observation_space(self):  
