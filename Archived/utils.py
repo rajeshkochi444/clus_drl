@@ -6,6 +6,7 @@ from ase.build import sort
 from ase.calculators.emt import EMT
 from ase.optimize import BFGS
 from scipy import sparse
+import matplotlib.pyplot as plt
 
 
 def write_to_db(database, image):
@@ -245,3 +246,28 @@ def sortProj(clus, vec):
     coord_xyz = [(w[i][2], w[i][3], w[i][4]) for i in range(natoms)]
     clus = Atoms(ele, coord_xyz)
     return clus
+
+def plot_ene_reward(step_nums, ene,reward, fname):
+    t = step_nums
+    data1 =  ene
+    data2 = reward
+    
+    fig, ax1 = plt.subplots()
+
+    color = 'tab:red'
+    ax1.set_xlabel('Step Number')
+    ax1.set_ylabel('Relative Energy (eV)', color=color)
+    ax1.plot(t, data1, color=color)
+    ax1.tick_params(axis='y', labelcolor=color)
+
+    ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
+
+    color = 'tab:blue'
+    ax2.set_ylabel('Reward', color=color)  # we already handled the x-label with ax1
+    ax2.plot(t, data2, color=color)
+    ax2.tick_params(axis='y', labelcolor=color)
+
+    fig.tight_layout()  # otherwise the right y-label is slightly clipped
+    plt.savefig(fname)
+    plt.close()
+

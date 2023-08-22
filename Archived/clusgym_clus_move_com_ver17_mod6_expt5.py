@@ -12,7 +12,8 @@ from ase.visualize.plot import plot_atoms
 from ase.io import write
 from asap3 import EMT
 import copy
-from utils import checkSimilar, addAtoms, fixOverlap, checkBonded
+import random
+from utils import *
 import itertools
 from generate_descriptors_amptorch import Generate_acsf_descriptor, Generate_soap_descriptor
 
@@ -46,6 +47,7 @@ class MCSEnv(gym.Env):
         self.timesteps = timesteps
         self.save_every = save_every
         self.plot_every = plot_every
+        self.save_dir = save_dir
         
         self.episodes = 0
 
@@ -78,6 +80,9 @@ class MCSEnv(gym.Env):
         self.observation_fingerprints = observation_fingerprints
         self.observation_forces = observation_forces
 
+        #self.observation_nlow_min = True
+        #self.observation_nhigh_min = True
+
 
         self.fps, self.fp_length = self._get_fingerprints(self.atoms)
         self.episode_initial_fps = self.fps.copy()
@@ -86,10 +91,25 @@ class MCSEnv(gym.Env):
         self.found_new_min = 0
         self.n_tot_all_minima = 0
         self.n_lower_energy_minima = 0
+        self.n_higher_energy_minima = 0
+        self.n_overlap = 0
+        self.n_nonbonded = 0
+        self.n_similar_min = 0
+        self.total_episode_steps = 0
+
+        self.found_overlap = 0
+        self.found_nonbonded = 0
+        self.found_low_min = 0
+        self.found_high_min = 0
+        self.found_similar_min = 0
+        
 
         #unique minima 
-        self.unique_minima = [self.initial_atoms.copy()]
-        self.unique_minima_energies = [0.0]
+        #self.unique_minima = [self.initial_atoms.copy()]
+        #self.unique_minima_energies = [0.0]
+        self.unique_minima = []
+        self.unique_minima_energies = []
+        self.n_unique_minima = 0
 
         # Define the possible actions
 
@@ -137,8 +157,12 @@ class MCSEnv(gym.Env):
 	
         if len(z1) > 0:     	#checking for overlapping atoms after movement
             reward -= 100.0
+            self.n_overlap += 1
+            self.found_overlap = 1
         elif checkBonded(self.atoms) == False:
             reward -= 100.0
+            self.n_nonbonded += 1
+            self.found_nonbonded = 1
         else:			#minimization
             dyn = BFGS(atoms=self.atoms, logfile=None, trajectory= save_path_min)
             #converged = dyn.run(fmax=0.02)
@@ -150,7 +174,8 @@ class MCSEnv(gym.Env):
             self.all_minima['timesteps'].append(self.history['timesteps'][-1] + 1)
             self.all_minima['positions'].append(self.atoms.positions.copy())
 
-            self.n_tot_all_minima = len(self.all_minima['minima'])
+            #self.n_tot_all_minima = len(self.all_minima['minima']) - 1 #initial clus added to the list. so removing it from the count
+            self.n_tot_all_minima += 1
             #reward += 2**(self.n_tot_all_minima)
 
 
@@ -162,24 +187,30 @@ class MCSEnv(gym.Env):
 		
             if any(bool_list): #if the minimum is already found, reward is zero
                 reward += 0.0
+                self.n_similar_min += 1
+                self.found_similar_min =  1
             else:				# a new minima found
                 if self.relative_energy < 0.0:
-                    reward += 100 * np.exp((-10.0) * self.relative_energy)
+                    reward += 1000 * np.exp((-1.0) * self.relative_energy)
                     self.n_lower_energy_minima += 1
+                    self.found_low_min = 1
                 else:
                     reward +=  100 * np.exp((+1.0) * self.relative_energy)
+                    self.n_higher_energy_minima += 1
+                    self.found_high_min = 1
 		
                 self.minima['minima'].append(self.atoms.copy())
                 self.minima['energies'].append(self._get_relative_energy())
                 self.minima['timesteps'].append(self.history['timesteps'][-1] + 1)
                 self.minima['positions'].append(self.atoms.positions.copy())
 
-                if self.n_lower_energy_minima == 10:
-                    self.done = True
-                    self.found_new_min = 1
+            if self.n_lower_energy_minima == 5:
+            #if self.n_tot_all_minima == 10:
+                self.done = True
+                self.found_new_min = 1
 
-        #checking and adding whether the relaxed cluster is a  new unique minimum found.  
-        #unique minimum can provide all the unique minima that were found from different episodes. 
+            #checking and adding whether the relaxed cluster is a  new unique minimum found.  
+            #unique minimum can provide all the unique minima that were found from different episodes. 
             for clus in self.unique_minima:
                 bool_list.append(checkSimilar(self.atoms, clus)) 
 		
@@ -187,9 +218,26 @@ class MCSEnv(gym.Env):
                 reward += 0.0
             else:				# a new unique minima found	
                 self.unique_minima.append(self.atoms.copy())
-                self.unique_minima_energies.append(self._get_relative_energy())
+                self.unique_minima_energies.append(self._get_absolute_energy())
             
             self.n_unique_minima = len(self.unique_minima)
+            plt.plot(self.unique_minima_energies)
+            plt.savefig(self.save_dir + 'unique_min.png')
+            plt.close()
+            if self.episodes % self.save_every == 0:
+                ene_index_list = np.argsort(self.unique_minima_energies)
+                if self.n_unique_minima >= 10:
+                    unique_low_images = [self.unique_minima[i] for i in ene_index_list[:10]]
+                else:
+                    unique_low_images = [self.unique_minima[i] for i in ene_index_list]
+                unique_low_images_fname = self.save_dir + 'unique_low_images.traj'
+                write(unique_low_images_fname, unique_low_images, format='traj' )
+
+            with open(self.save_dir + 'unique_min_ene.txt', "a+") as fh:
+                for ene in self.unique_minima_energies:
+                    fh.write(f"{ene: .4f} \n")
+                    
+
                 
         #Fingerprints after step action
         self.fps, self.fp_length = self._get_fingerprints(self.atoms)
@@ -197,8 +245,6 @@ class MCSEnv(gym.Env):
         #Get the new observation
         observation = self._get_observation()
         
-        if self.done:
-            episode_over = True
 
         #Update the history for the rendering after each step
         self.relative_energy = self._get_relative_energy()
@@ -214,21 +260,38 @@ class MCSEnv(gym.Env):
             self.history['initial_fps'] = self.history['initial_fps'] + [self.episode_initial_fps.tolist()]
 
         self.episode_reward += reward
+        self.total_episode_steps += 1
 
         #if len(self.history['actions'])-1 >= self.total_steps:
-        if len(self.history['timesteps'])-1 >= self.total_steps:
+        if self.done:
+            episode_over = True
+        elif len(self.history['timesteps'])-1 >= self.total_steps:
             episode_over = True
             
         if episode_over: 
-            #self.total_force_calls += self.calc.force_calls
             self.min_idx = int(np.argmin(self.minima['energies']))
             self.unique_min_idx = int(np.argmin(self.unique_minima_energies))
-            #print("Total clus, Total unique clus:", len(self.minima['minima']), len(self.unique_minima))
+            print("Total clus, Total unique clus:", len(self.minima['minima']), len(self.unique_minima))
             if self.episodes % self.save_every == 0:
                 self.save_episode()
                 self.save_traj()
                 
             self.episodes += 1
+            with open(self.save_dir + 'episode_data.txt', "a+") as fh:
+                fh.write(f"Ep_number: {self.episodes}, "
+                         f"Ep_Reward: {self.episode_reward: .1f}, "
+                         f"Ep_tot_steps: {self.total_episode_steps}, "
+                         f"T_overlap: {self.n_overlap}, "
+                         f"T_nonbonded: {self.n_nonbonded}, "
+                         f"T_tot_all_min: {self.n_tot_all_minima}, "
+                         f"T_similar_min: {self.n_similar_min}, "
+                         f"T_lower_ene_min: {self.n_lower_energy_minima}, "
+                         f"T_higher_ene_min: {self.n_higher_energy_minima}, "
+                         f"T_unique_min: {self.n_unique_minima}, "
+                         f"GM_ene: {min(self.unique_minima_energies): .3f}, "
+                         f"atom select: {self.atom_selection}, "
+                         f"atom_shift: {self.shift} \n " 
+                         )
             
         return observation, reward, episode_over, {}
 
@@ -296,6 +359,17 @@ class MCSEnv(gym.Env):
         self.found_new_min = 0
         self.n_tot_all_minima = 0
         self.n_lower_energy_minima = 0
+        self.n_higher_energy_minima = 0
+        self.n_overlap = 0
+        self.n_nonbonded = 0
+        self.n_similar_min = 0
+        self.total_episode_steps = 0
+
+        self.found_overlap = 0
+        self.found_nonbonded = 0
+        self.found_low_min = 0
+        self.found_high_min = 0
+        self.found_similar_min = 0
 
         #Set the energy history
         results = ['timesteps', 'energies', 'positions', 'scaled_positions', 'fingerprints', 'initial_fps']
@@ -365,6 +439,9 @@ class MCSEnv(gym.Env):
     
     def _get_relative_energy(self):
         return self.atoms.get_potential_energy() - self.initial_energy
+    
+    def _get_absolute_energy(self):
+        return self.atoms.get_potential_energy() 
 
     def _get_observation(self):
         # helper function to get the current observation, which is just the position
@@ -382,7 +459,15 @@ class MCSEnv(gym.Env):
             observation['forces'] = self.atoms.get_forces().flatten()
         
         observation['found_new_min'] = np.array([self.found_new_min]).reshape(1,)
-            
+
+        #observation['found_nlow_min'] = self.n_lower_energy_minima
+        #observation['found_nhigh_min'] = self.n_higher_energy_minima
+        observation['found_nonbonded'] = self.found_nonbonded
+        observation['found_overlap'] = self.found_new_min
+        observation['found_low_min'] = self.found_low_min
+        observation['found_high_min'] = self.found_high_min
+        observation['found_similar_min'] = self.found_similar_min
+      
         return observation
     
     def _get_fingerprints(self, atoms):
@@ -417,6 +502,11 @@ class MCSEnv(gym.Env):
                                         'found_new_min': spaces.Box(low=-0.5,
                                                             high=1.5,
                                                             shape=(1,)),
+                                        'found_nonbonded': spaces.Discrete(2),
+                                        'found_overlap': spaces.Discrete(2),
+                                        'found_low_min': spaces.Discrete(2),
+                                        'found_high_min': spaces.Discrete(2),   
+                                        'found_similar_min': spaces.Discrete(2),                                
                                         })
 
         return observation_space
@@ -425,8 +515,9 @@ class MCSEnv(gym.Env):
         """
 	Generate a random cluster configuration
 	"""
-        if self.clus_seed is not None:
-            np.random.seed(self.clus_seed)
+        if self.clus_seed is None:
+            self.clus_seed = random.randint(1, 100000)
+            #np.random.seed(self.clus_seed)
 
         ele_initial = [self.eleNames[0], self.eleNames[-1]]
         d = (self.eleRadii[0] + self.eleRadii[-1]) / 2

@@ -12,7 +12,7 @@ from ase.visualize.plot import plot_atoms
 from ase.io import write
 from asap3 import EMT
 import copy
-from utils import checkSimilar, addAtoms, fixOverlap, checkBonded
+from utils import *
 import itertools
 from generate_descriptors_amptorch import Generate_acsf_descriptor, Generate_soap_descriptor
 
@@ -46,6 +46,7 @@ class MCSEnv(gym.Env):
         self.timesteps = timesteps
         self.save_every = save_every
         self.plot_every = plot_every
+        self.save_dir = save_dir
         
         self.episodes = 0
 
@@ -86,10 +87,12 @@ class MCSEnv(gym.Env):
         self.found_new_min = 0
         self.n_tot_all_minima = 0
         self.n_lower_energy_minima = 0
+        
 
         #unique minima 
         self.unique_minima = [self.initial_atoms.copy()]
         self.unique_minima_energies = [0.0]
+        self.n_unique_minima = 0
 
         # Define the possible actions
 
@@ -174,12 +177,12 @@ class MCSEnv(gym.Env):
                 self.minima['timesteps'].append(self.history['timesteps'][-1] + 1)
                 self.minima['positions'].append(self.atoms.positions.copy())
 
-                if self.n_lower_energy_minima == 10:
+                if self.n_lower_energy_minima == 3:
                     self.done = True
                     self.found_new_min = 1
 
-        #checking and adding whether the relaxed cluster is a  new unique minimum found.  
-        #unique minimum can provide all the unique minima that were found from different episodes. 
+            #checking and adding whether the relaxed cluster is a  new unique minimum found.  
+            #unique minimum can provide all the unique minima that were found from different episodes. 
             for clus in self.unique_minima:
                 bool_list.append(checkSimilar(self.atoms, clus)) 
 		
@@ -197,9 +200,6 @@ class MCSEnv(gym.Env):
         #Get the new observation
         observation = self._get_observation()
         
-        if self.done:
-            episode_over = True
-
         #Update the history for the rendering after each step
         self.relative_energy = self._get_relative_energy()
        	
@@ -216,19 +216,27 @@ class MCSEnv(gym.Env):
         self.episode_reward += reward
 
         #if len(self.history['actions'])-1 >= self.total_steps:
-        if len(self.history['timesteps'])-1 >= self.total_steps:
+        if self.done:
+            episode_over = True
+        elif len(self.history['timesteps'])-1 >= self.total_steps:
             episode_over = True
             
         if episode_over: 
-            #self.total_force_calls += self.calc.force_calls
             self.min_idx = int(np.argmin(self.minima['energies']))
             self.unique_min_idx = int(np.argmin(self.unique_minima_energies))
-            #print("Total clus, Total unique clus:", len(self.minima['minima']), len(self.unique_minima))
+            print("Total clus, Total unique clus:", len(self.minima['minima']), len(self.unique_minima))
             if self.episodes % self.save_every == 0:
                 self.save_episode()
                 self.save_traj()
                 
             self.episodes += 1
+            with open(self.save_dir + 'episode_data.txt', "a+") as fh:
+                fh.write(f"Ep_number: {self.episodes}, "
+                         f"T_tot_all_min: {self.n_tot_all_minima}, "
+                         f"T_lower_ene_min: {self.n_lower_energy_minima}, "
+                         f"T_unique_min: {self.n_unique_minima}, "
+                         f"atom_shift: {self.shift} \n " 
+                         )
             
         return observation, reward, episode_over, {}
 

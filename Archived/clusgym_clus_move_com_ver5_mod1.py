@@ -46,6 +46,7 @@ class MCSEnv(gym.Env):
         self.timesteps = timesteps
         self.save_every = save_every
         self.plot_every = plot_every
+        self.save_dir = save_dir
         
         self.episodes = 0
 
@@ -86,6 +87,10 @@ class MCSEnv(gym.Env):
         self.found_new_min = 0
         self.n_tot_all_minima = 0
         self.n_lower_energy_minima = 0
+        self.n_higher_energy_minima = 0
+        self.n_nonbonded = 0
+        self.n_overlap = 0
+        self.total_episode_steps = 0
 
         #unique minima 
         self.unique_minima = [self.initial_atoms.copy()]
@@ -137,8 +142,10 @@ class MCSEnv(gym.Env):
 	
         if len(z1) > 0:     	#checking for overlapping atoms after movement
             reward -= 100.0
+            self.n_overlap += 1
         elif checkBonded(self.atoms) == False:
             reward -= 100.0
+            self.n_nonbonded += 1
         else:			#minimization
             dyn = BFGS(atoms=self.atoms, logfile=None, trajectory= save_path_min)
             #converged = dyn.run(fmax=0.02)
@@ -150,7 +157,8 @@ class MCSEnv(gym.Env):
             self.all_minima['timesteps'].append(self.history['timesteps'][-1] + 1)
             self.all_minima['positions'].append(self.atoms.positions.copy())
 
-            self.n_tot_all_minima = len(self.all_minima['minima'])
+            #self.n_tot_all_minima = len(self.all_minima['minima'])
+            self.n_tot_all_minima += 1
             #reward += 2**(self.n_tot_all_minima)
 
 
@@ -168,6 +176,7 @@ class MCSEnv(gym.Env):
                     self.n_lower_energy_minima += 1
                 else:
                     reward +=  100 * np.exp((+1.0) * self.relative_energy)
+                    self.n_higher_energy_minima += 1
 		
                 self.minima['minima'].append(self.atoms.copy())
                 self.minima['energies'].append(self._get_relative_energy())
@@ -209,11 +218,21 @@ class MCSEnv(gym.Env):
         self.history['energies'] = self.history['energies'] + [self.relative_energy]
         self.history['positions'] = self.history['positions'] + [self.atoms.get_positions(wrap=False).tolist()]
         self.history['scaled_positions'] = self.history['scaled_positions'] + [self.atoms.get_scaled_positions(wrap=False).tolist()]
+        self.history['step reward'] = self.history['step reward'] + [reward]
+
         if self.observation_fingerprints:
             self.history['fingerprints'] = self.history['fingerprints'] + [self.fps.tolist()]
             self.history['initial_fps'] = self.history['initial_fps'] + [self.episode_initial_fps.tolist()]
 
         self.episode_reward += reward
+        self.total_episode_steps +=1
+
+        #Plot energies and rewards after each time step
+        #x_axis_value = self.history['timesteps']
+        #y_data1 = self.history['energies']
+        #y_data2 = self.history['step reward']
+        #fig_fname = self.save_dir + 'step_rewards.png'
+        #plot_ene_reward(x_axis_value, y_data1, y_data2,fig_fname )
 
         #if len(self.history['actions'])-1 >= self.total_steps:
         if len(self.history['timesteps'])-1 >= self.total_steps:
@@ -229,6 +248,22 @@ class MCSEnv(gym.Env):
                 self.save_traj()
                 
             self.episodes += 1
+
+            #with open(self.save_dir + 'episode_data.txt', "a+") as fh:
+                #fh.write(f"Ep_number: {self.episodes}, "
+                    #f"T_Ep_steps: {self.total_episode_steps}, "
+                    #f"Ep_reward: {self.episode_reward: .1f}, "
+                    #f"T_overlap: {self.n_overlap}, "
+                    #f"T_nonbonded: {self.n_nonbonded}, "
+                    #f"T_min: {self.n_tot_all_minima}, "
+                    #f"T_lower_ene_min: {self.n_lower_energy_minima}, "
+                    #f"T_higher_ene_min: {self.n_higher_energy_minima}, "
+                    #f"T_unique_min: {self.n_unique_minima}, "
+                    #f"Select_atom: {self.atom_selection}, "
+                    #f"atom_shift: {self.shift} \n "
+                    #)
+
+            
             
         return observation, reward, episode_over, {}
 
@@ -296,6 +331,10 @@ class MCSEnv(gym.Env):
         self.found_new_min = 0
         self.n_tot_all_minima = 0
         self.n_lower_energy_minima = 0
+        self.n_higher_energy_minima = 0
+        self.n_nonbonded = 0
+        self.n_overlap = 0
+        self.total_episode_steps = 0
 
         #Set the energy history
         results = ['timesteps', 'energies', 'positions', 'scaled_positions', 'fingerprints', 'initial_fps']
