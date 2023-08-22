@@ -10,7 +10,7 @@ from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 import pandas as pd
 #from surface_seg.envs.symmetry_function import make_snn_params
-from symmetry_function import make_snn_params
+#from symmetry_function import make_snn_params
 
 
 def movingaverage(values, window):

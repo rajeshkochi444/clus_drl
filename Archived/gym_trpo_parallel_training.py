@@ -2,7 +2,7 @@ import matplotlib
 matplotlib.use("Agg")
 import gym
 #from surface_seg.envs.mcs_env import MCSEnv
-from clusgym_env  import MCSEnv
+from clusgym_clus_move_com_ver9  import MCSEnv
 import gym.wrappers
 import numpy as np
 import tensorforce 
@@ -11,14 +11,15 @@ from tensorforce.execution import Runner
 from tensorforce.execution import Runner
 import os
 import copy
+from callback_simple import Callback
 
-timesteps = 200
-num_parallel = 16
+timesteps = 250
+num_parallel = 24
 seed = 30
 eleNames = ['Ni']
 eleNums = [8]
 clus_seed = 100
-save_dir = './result_multi_env_parallel/'
+save_dir = './result_multi_env_parallel_ver9'
 
 
 def setup_env(recording=False):
@@ -80,6 +81,9 @@ print(agent_spec)
 
 #print('Detected N=%d cores, running in parallel!'%num_processes)
 
+#plot_frequency --> plotting energy and trajectories frequency
+callback = Callback(save_dir).episode_finish
+
 num_processes = num_parallel
 runner = Runner(
     agent=agent,
@@ -89,6 +93,6 @@ runner = Runner(
     max_episode_timesteps=400,
 )
 
-runner.run(num_episodes=10000)
+runner.run(num_episodes=24000,  callback=callback, callback_episode_frequency=1)
 #runner.run(num_episodes=100, evaluation=True)
 runner.close()
