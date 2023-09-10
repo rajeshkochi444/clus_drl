@@ -2,7 +2,7 @@ import matplotlib
 matplotlib.use("Agg")
 import gym
 #from surface_seg.envs.mcs_env import MCSEnv
-from clusgym_clus_move_com_ver18_mod6_expt5  import MCSEnv
+from clusgym_ver22_expt1  import MCSEnv
 import gym.wrappers
 import numpy as np
 import tensorforce 
@@ -14,12 +14,12 @@ import copy
 from callback_simple import Callback
 
 timesteps = 200
-num_parallel = 32
+num_parallel = 24
 seed = 30
-eleNames = ['Cu']
-eleNums = [20]
+eleNames = ['Au']
+eleNums = [38]
 clus_seed = None
-save_dir = './result_multi_env_parallel_ver18_mod6_expt5/'
+save_dir = './result_clusgym_ver22_expt1/'
 
 
 

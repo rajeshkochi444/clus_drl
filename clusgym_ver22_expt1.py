@@ -88,7 +88,7 @@ class MCSEnv(gym.Env):
         self.episode_initial_fps = self.fps.copy()
         self.positions = self.atoms.get_positions()
         
-        self.found_new_min = 0
+        self.reach_convergence = 0
         self.n_tot_all_minima = 0
         self.n_lower_energy_minima = 0
         self.n_higher_energy_minima = 0
@@ -156,13 +156,15 @@ class MCSEnv(gym.Env):
         z1 = [ dist for k, dist in enumerate(dist_after_move) if k != self.atom_selection and dist < 0.5*self.avg_radii ]
 	
         if len(z1) > 0:     	#checking for overlapping atoms after movement
-            reward -= 100.0
+            reward -= 10.0
             self.n_overlap += 1
             self.found_overlap = 1
+
         elif checkBonded(self.atoms) == False:
-            reward -= 100.0
+            reward -= 10.0
             self.n_nonbonded += 1
             self.found_nonbonded = 1
+
         else:			#minimization
             dyn = BFGS(atoms=self.atoms, logfile=None, trajectory= save_path_min)
             #converged = dyn.run(fmax=0.02)
@@ -185,17 +187,17 @@ class MCSEnv(gym.Env):
             for clus in self.minima['minima']:
                 bool_list.append(checkSimilar(self.atoms, clus)) 
 		
-            if any(bool_list): #if the minimum is already found, reward is zero
-                reward -= 100.0
+            if any(bool_list): #if the minimum is already found, reward is -100.0
+                reward -= 10.0
                 self.n_similar_min += 1
                 self.found_similar_min =  1
             else:				# a new minima found
                 if self.relative_energy < 0.0:
-                    reward += 1000 * np.exp((-1.0) * self.relative_energy)
+                    reward += 100 * np.exp((-1.0) * self.relative_energy)
                     self.n_lower_energy_minima += 1
                     self.found_low_min = 1
                 else:
-                    reward +=  1000 * np.exp((+1.0) * self.relative_energy)
+                    reward +=  100 * np.exp((+1.0) * self.relative_energy)
                     self.n_higher_energy_minima += 1
                     self.found_high_min = 1
 		
@@ -207,7 +209,7 @@ class MCSEnv(gym.Env):
             if self.n_lower_energy_minima == 5:
             #if self.n_tot_all_minima == 10:
                 self.done = True
-                self.found_new_min = 1
+                self.reach_convergence = 1
 
             #checking and adding whether the relaxed cluster is a  new unique minimum found.  
             #unique minimum can provide all the unique minima that were found from different episodes. 
@@ -288,7 +290,8 @@ class MCSEnv(gym.Env):
                          f"T_lower_ene_min: {self.n_lower_energy_minima}, "
                          f"T_higher_ene_min: {self.n_higher_energy_minima}, "
                          f"T_unique_min: {self.n_unique_minima}, "
-                         f"GM_ene: {min(self.unique_minima_energies): .3f}, "
+                         f"Initial Ene: {(self.initial_energy): .4f}, "
+                         f"GM_ene: {min(self.unique_minima_energies): .4f}, "
                          f"atom select: {self.atom_selection}, "
                          f"atom_shift: {self.shift} \n " 
                          )
@@ -300,7 +303,7 @@ class MCSEnv(gym.Env):
         return self.initial_atoms, self.elements
     
     def save_episode(self):
-        save_path = os.path.join(self.history_dir, '%d_%f_%f_%f_%f_%f_%f.npz' %(self.episodes, self.minima['energies'][self.min_idx],
+        save_path = os.path.join(self.history_dir, '%d_%f_%f_%f_%d_%d_%d.npz' %(self.episodes, self.minima['energies'][self.min_idx],
                                                                    self.initial_energy, self.episode_reward, self.n_tot_all_minima, self.n_lower_energy_minima, self.n_unique_minima))
         np.savez_compressed(save_path, 
              initial_energy = self.initial_energy,
@@ -317,11 +320,11 @@ class MCSEnv(gym.Env):
         return
     
     def save_traj(self):      
-        save_path = os.path.join(self.traj_dir, '%d_%f_%f_%f_%f_%f_%f_full.traj' %(self.episodes, self.minima['energies'][self.min_idx]
+        save_path = os.path.join(self.traj_dir, '%d_%f_%f_%f_%d_%d_%d_full.traj' %(self.episodes, self.minima['energies'][self.min_idx]
                                                                       , self.initial_energy, self.episode_reward, self.n_tot_all_minima, self.n_lower_energy_minima, self.n_unique_minima))
-        episode_min_path = os.path.join(self.episode_min_traj_dir, '%d_%f_%f_%f_%f_%f_%f_full.traj' %(self.episodes, self.minima['energies'][self.min_idx]
+        episode_min_path = os.path.join(self.episode_min_traj_dir, '%d_%f_%f_%f_%d_%d_%d_full.traj' %(self.episodes, self.minima['energies'][self.min_idx]
                                                                       , self.initial_energy, self.episode_reward, self.n_tot_all_minima, self.n_lower_energy_minima, self.n_unique_minima))
-        unique_min_path = os.path.join(self.unique_min_traj_dir, '%d_%f_%f_%f_%f_%f_%f_full.traj' %(self.episodes, self.unique_minima_energies[self.min_idx]
+        unique_min_path = os.path.join(self.unique_min_traj_dir, '%d_%f_%f_%f_%d_%d_%d_full.traj' %(self.episodes, self.unique_minima_energies[self.min_idx]
                                                                       , self.initial_energy, self.episode_reward, self.n_tot_all_minima, self.n_lower_energy_minima, self.n_unique_minima))
         trajectories = []
         for atoms in self.trajectories:
@@ -356,7 +359,7 @@ class MCSEnv(gym.Env):
         self.all_minima['positions'] = [self.atoms.positions.copy()]
         self.all_minima['timesteps'] = [0]
 
-        self.found_new_min = 0
+        self.reach_convergence = 0
         self.n_tot_all_minima = 0
         self.n_lower_energy_minima = 0
         self.n_higher_energy_minima = 0
@@ -458,12 +461,9 @@ class MCSEnv(gym.Env):
         if self.observation_forces:
             observation['forces'] = self.atoms.get_forces().flatten()
         
-        observation['found_new_min'] = np.array([self.found_new_min]).reshape(1,)
-
-        #observation['found_nlow_min'] = self.n_lower_energy_minima
-        #observation['found_nhigh_min'] = self.n_higher_energy_minima
+        observation['reach_convergence'] = self.reach_convergence
         observation['found_nonbonded'] = self.found_nonbonded
-        observation['found_overlap'] = self.found_new_min
+        observation['found_overlap'] = self.found_overlap
         observation['found_low_min'] = self.found_low_min
         observation['found_high_min'] = self.found_high_min
         observation['found_similar_min'] = self.found_similar_min
@@ -499,9 +499,7 @@ class MCSEnv(gym.Env):
                                                             high= 2,
                                                             shape=(len(self.atoms)*3,)
                                                             ),
-                                        'found_new_min': spaces.Box(low=-0.5,
-                                                            high=1.5,
-                                                            shape=(1,)),
+                                        'reach_convergence': spaces.Discrete(2),
                                         'found_nonbonded': spaces.Discrete(2),
                                         'found_overlap': spaces.Discrete(2),
                                         'found_low_min': spaces.Discrete(2),
