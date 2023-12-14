@@ -83,17 +83,17 @@ def fixOverlap(clus_to_fix):
     clus_to_fix_sorted = sort(clus_to_fix)
     clus_to_fix_sorted.pbc = (True, True, True)
     clus_to_fix_sorted.calc = EMT()
-    dyn = BFGS(clus_to_fix_sorted, logfile='clus_fixoverlp.log')
-    dyn.run(fmax=0.02, steps=1000)
+    dyn = BFGS(clus_to_fix_sorted, logfile='fixoverlp.log')
+    dyn.run(fmax=0.02, steps=2000)
     return clus_to_fix_sorted
 
 
-def addAtoms(clusm, eleNames, eleNums, eleRadii, seed_number):
+def addAtoms(clusm, eleNames, eleNums):
     """
     Add atom(s) to  a smaller clusters in the initial pool
     """
 
-    ran.seed(seed_number)
+    #ran.seed(seed_number)
     
     eleList = clusm.get_chemical_symbols()
     coord_xyz = []
